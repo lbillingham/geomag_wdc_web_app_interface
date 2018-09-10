@@ -6,11 +6,13 @@ import configparser
 
 import pytest
 
-from lib.consume_webservices import ParsedConfigFile, ConfigError
+from gmdata_webinterface.consume_webservices import ParsedConfigFile, ConfigError
 
 # these small Mock classes are OK weird
 # pylint: disable=missing-docstring, no-self-use
 THE_SERVICE = 'ABC'
+
+
 class MockCfgParser(object):
     """
     fake just enough of the bits from
@@ -31,16 +33,21 @@ class MockCfgParser(object):
         'FileFormat': 'beep',
         '_format_template': '{}-boop'
     }
+
     def __init__(self):
         self.data = {**self.header_bits,
                      **self.url_bits,
                      **self.for_form_bits}
+
     def __getitem__(self, _):
         return self.data
+
     def read(self, _):
         return None
+
     def sections(self):
         return [THE_SERVICE]
+
     def get(self, _, key):
         try:
             return self.data[key]
@@ -49,9 +56,10 @@ class MockCfgParser(object):
 
 # pylint: enable=missing-docstring, no-self-use
 
+
 def test_construction(monkeypatch):
     """can we make a new instance of a ParsedConfigFile?"""
-    monkeypatch.setattr('lib.consume_webservices.ConfigParser', MockCfgParser)
+    monkeypatch.setattr('gmdata_webinterface.consume_webservices.ConfigParser', MockCfgParser)
     got = ParsedConfigFile('afile', THE_SERVICE)
     assert got.service == THE_SERVICE
     # test failure to find service raises sane error
@@ -65,7 +73,7 @@ def test_construction(monkeypatch):
 
 def test_repr(monkeypatch):
     """does `repr` and `eval` roundtrip to correct new instance?"""
-    monkeypatch.setattr('lib.consume_webservices.ConfigParser', MockCfgParser)
+    monkeypatch.setattr('gmdata_webinterface.consume_webservices.ConfigParser', MockCfgParser)
     filename = 'a-very-good.file'
     original = ParsedConfigFile(filename, THE_SERVICE)
     via_repr = eval(repr(original))   # pylint: disable=eval-used; OK for testing repr
@@ -77,7 +85,7 @@ def test_repr(monkeypatch):
 
 def test_extract_headers_happy_path(monkeypatch):
     """can we sucessfully extract headers from config file?"""
-    monkeypatch.setattr('lib.consume_webservices.ConfigParser', MockCfgParser)
+    monkeypatch.setattr('gmdata_webinterface.consume_webservices.ConfigParser', MockCfgParser)
     parser = ParsedConfigFile('whatever', THE_SERVICE)
     got_headers = parser.extract_headers()
     expected = MockCfgParser.header_bits
@@ -99,7 +107,7 @@ def test_extract_headers_sad_path(monkeypatch):
             'NOTContent-Type': 'eggs'
         }
     # pylint: enable=missing-docstring
-    monkeypatch.setattr('lib.consume_webservices.ConfigParser', BadCfgParser)
+    monkeypatch.setattr('gmdata_webinterface.consume_webservices.ConfigParser', BadCfgParser)
     with pytest.raises(ConfigError) as err:
         ParsedConfigFile('whatever', THE_SERVICE)
     err_mess = str(err.value)
@@ -109,7 +117,7 @@ def test_extract_headers_sad_path(monkeypatch):
 
 def test_extract_url_happy_path(monkeypatch):
     """able to get URL from config file?"""
-    monkeypatch.setattr('lib.consume_webservices.ConfigParser', MockCfgParser)
+    monkeypatch.setattr('gmdata_webinterface.consume_webservices.ConfigParser', MockCfgParser)
     parser = ParsedConfigFile('whatever', THE_SERVICE)
     got_url = parser.extract_url()
     expected_bits = MockCfgParser().url_bits
@@ -128,7 +136,7 @@ def test_extract_url_sad_path(monkeypatch):
             'NOTHostname': 'foo',
             'NOTRoute': 'bar',
         }
-    monkeypatch.setattr('lib.consume_webservices.ConfigParser', BadCfgParser)
+    monkeypatch.setattr('gmdata_webinterface.consume_webservices.ConfigParser', BadCfgParser)
     with pytest.raises(ConfigError) as err:
         ParsedConfigFile('whatever', THE_SERVICE)
     err_mess = str(err.value)
@@ -143,7 +151,7 @@ def test_form_data__format_happy_path(monkeypatch):  # pylint: disable=invalid-n
     """
     can we read bits we expect out of a valid config file?
     """
-    monkeypatch.setattr('lib.consume_webservices.ConfigParser', MockCfgParser)
+    monkeypatch.setattr('gmdata_webinterface.consume_webservices.ConfigParser', MockCfgParser)
     parser = ParsedConfigFile('whatever', THE_SERVICE)
     got_fmt = parser.form_data__format()
     expected_fmt = 'beep-boop'
@@ -157,7 +165,7 @@ def test_form_data__format_sad_no_format_template(monkeypatch):  # pylint: disab
             'FileFormat': 'beep',
             'no_format_template': 'here'
         }
-    monkeypatch.setattr('lib.consume_webservices.ConfigParser', BadCfgParser)
+    monkeypatch.setattr('gmdata_webinterface.consume_webservices.ConfigParser', BadCfgParser)
     with pytest.raises(ConfigError) as err:
         ParsedConfigFile('whatever', THE_SERVICE)
     err_mess = str(err.value)
@@ -172,7 +180,7 @@ def test_form_data__format_sad_no_file_format(monkeypatch):  # pylint: disable=i
             'NoFileFormatHere': 'beep',
             '_format_template': 'here'
         }
-    monkeypatch.setattr('lib.consume_webservices.ConfigParser', BadCfgParser)
+    monkeypatch.setattr('gmdata_webinterface.consume_webservices.ConfigParser', BadCfgParser)
     with pytest.raises(ConfigError) as err:
         ParsedConfigFile('whatever', THE_SERVICE)
     err_mess = str(err.value)
@@ -195,7 +203,7 @@ def test_reads_supplied_filename(monkeypatch):
             cls.read_call_count += 1
             cls.read_called_with = str(arg)
 
-    monkeypatch.setattr('lib.consume_webservices.ConfigParser', SpyCfgParser)
+    monkeypatch.setattr('gmdata_webinterface.consume_webservices.ConfigParser', SpyCfgParser)
 
     filename = 'a_unique_file.name'
     assert SpyCfgParser.read_call_count == 0

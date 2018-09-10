@@ -1,24 +1,92 @@
 """
+consume_webservices module
+
 Consume the BGS-WDC (and, in future, INTERMAGNET) webservices.
 
 main public function to call is `fetch_data(...)`.
 Other functions and classes are for modularity/testability
 
 Lots of the server interaction is controlled
-by the `.ini` configuration file.
-as is the location of the downloaded file
+by the `.ini` configuration file, as is
+the download file structure.
+
+@author: L Billingham; W. Brown
 """
+import os
+import zipfile
 from datetime import timedelta
 from configparser import ConfigParser, NoOptionError
-import zipfile
-
 import requests as rq
 from six import BytesIO
+from gmdata_webinterface.sandboxed_format import safe_format
 
-from lib.sandboxed_format import safe_format
+
+def fetch_data(*, start_date, end_date, station_list, cadence, service,
+               saveroot, configpath=None):
+    """
+    Wrapper for the wrapper `fetch_station_data()`...
+    `fetch_station_data()` handles a single observatory, for a range of
+    dates. Here, simply accept a list of `station` codes, and pass each value
+    to `fetch_station_data()` with the remaining criteria kept constant.
+
+    Parameters
+    ----------
+    start_date:  datetime.date
+        earliest date at which data wanted.
+    end_date:  datetime.datetime
+        latest date at which data wanted.
+    station: string, list of string
+        IAGA-style station code e.g. 'ESK', 'NGK' or a list of such e.g.
+        ['ESK, 'NGK']
+    cadence: string
+        frequency of the data. 'minute' or 'hour',
+        changes the total data span
+    service: string
+        webservice to target, only  'WDC' for now
+        (future work will support 'INTERMAGNET')
+    saveroot: file path as string
+        root directory at which to save data.
+        multi-file downloads structured according to
+        contents of `configpath`
+    configpath: file path as string
+        location of the configuration file we want to read, by default
+        this will be the version included in the package install
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Downloads data to the specified path.
+
+    Raises
+    ------
+    ValueError if `cadence` is not something we can use
+        (currently only 'minute' or 'hour')
+
+    ConfigError if any of the required header values
+        are not options within the config file
+
+    InvalidRequest if we cannot make a sane request to `service` based
+        on data provided via function arguments or the `configpath`
+
+    InvalidResponse if the response is not the desired HTTP status code
+    """
+
+    if isinstance(station_list, str):
+        station_list = station_list.split()
+
+    [
+        fetch_station_data(start_date=start_date, end_date=end_date,
+                           station=station_, cadence=cadence, service=service,
+                           saveroot=saveroot, configpath=configpath)
+        for station_ in station_list
+    ]
 
 
-def fetch_data(start_date, end_date, station, cadence, service, saveroot, configpath):
+def fetch_station_data(*, start_date, end_date, station, cadence, service,
+                       saveroot, configpath=None):
     """
     Ask webservice `service` for observatory data
     and download it to folder `saveroot`.
@@ -28,7 +96,7 @@ def fetch_data(start_date, end_date, station, cadence, service, saveroot, config
     from the configuration file at `configpath`
 
     Parameters
-    ---------
+    ----------
     start_date:  datetime.date
         earliest date at which data wanted.
     end_date:  datetime.datetime
@@ -46,14 +114,15 @@ def fetch_data(start_date, end_date, station, cadence, service, saveroot, config
         multi-file downloads structured according to
         contents of `configpath`
     configpath: file path as string
-        location of the configuration file we want to read
+        location of the configuration file we want to read, by default
+        this will be the version included in the package install
 
     Returns
-    ------
+    -------
     None
 
-    Side Effects
-    ------------
+    Notes
+    -----
     Downloads data to the specified path.
 
     Raises
@@ -65,8 +134,15 @@ def fetch_data(start_date, end_date, station, cadence, service, saveroot, config
         are not options within the config file
 
     InvalidRequest if we cannot make a sane request to `service` based
-        on data provided via function arguments or the `configpath`.
+        on data provided via function arguments or the `configpath`
+
+    InvalidResponse if the response is not the desired HTTP status code
     """
+
+    if configpath is None:
+        configpath = os.path.join(os.path.dirname(__file__),
+                                  'consume_rest.ini')
+
     config = ParsedConfigFile(configpath, service)
     form_data = FormData(config)
     form_data.set_datasets(start_date, end_date, station, cadence, service)
@@ -76,9 +152,55 @@ def fetch_data(start_date, end_date, station, cadence, service, saveroot, config
     response = rq.post(
         request.url, data=request.form_data, headers=request.headers
     )
-    # TODO: make this work with > 1 file
+    check_response(response.status_code, response.content)
+
+    # TODO: make this work with > 1 file without wrapper function
     with zipfile.ZipFile(BytesIO(response.content)) as fzip:
         fzip.extractall(saveroot)
+
+
+def check_response(status_code, content):
+    """
+    Check if the server response is 'ok' (see `requests.codes`).
+    It's probably 'ok' 200, or 'internal_server_error' 500 because the server
+    is misbehaving.
+
+    Parameters
+    ----------
+    status_code: http status code from post request response
+
+    content: stream content from post request response
+
+    Returns
+    -------
+    none
+
+    Raises
+    ------
+    ValueError: if http code is not 'ok' (200), or is 'ok' but empty
+        `filelist` returned
+
+    """
+    if status_code != rq.codes.ok:
+        mess = ("unexpected http response code from server: " +
+                "{}, '{}'")
+        mess = mess.format(status_code,
+                           rq.status_codes._codes[status_code][0])
+        raise ValueError(mess)
+
+    elif status_code == rq.codes.ok:
+        """An empty zipfile will still send back some bytes but can check if
+        the returned filelist is empty.
+        """
+        content = zipfile.ZipFile(BytesIO(content))
+        if not content.filelist:
+            mess = ("no valid files returned.\n" +
+                    "http response code is: {}, '{}'\n" +
+                    "data may not be available for date range " +
+                    "requested, or server is misbehaving.")
+            mess = mess.format(status_code,
+                               rq.status_codes._codes[status_code][0])
+            raise ValueError(mess)
 
 
 class ConfigError(Exception):
@@ -99,11 +221,12 @@ class DataRequest(object):
     The HTTP POST request for getting
     the geomag data we want
 
-    Can set attributes by either:
-    - passing parameters at instantiation
+    Can set attributes by either
+        * passing parameters at instantiation
+
     or
-    - instantiating a 'blank' object and use the `my_req.set_*(config)` methods
-      to populate all the required parts from a parse config file
+        * instantiating a 'blank' object and use the `my_req.set_*(config)`
+        methods to populate all the required parts from a parse config file
 
     Attributes
     ----------
@@ -113,11 +236,11 @@ class DataRequest(object):
     form_data: dict
         Dictionary of POST request form data
         e.g. {'format': 'text/x-wdc',
-              'datasets': '/wdc/datasets/minute/aaa200509'}
+        'datasets': '/wdc/datasets/minute/aaa200509'}
     headers: dict
         Dictionary of request headers
         e.g. {'Accept': 'text/html,application/xml',
-              'Content-Type': 'application/x-www-form-urlencoded'}
+        'Content-Type': 'application/x-www-form-urlencoded'}
     url: string
         Full url to which we will make the request
         e.g. http://app.geomag.bgs.ac.uk/wdc/datasets/download
@@ -133,11 +256,12 @@ class DataRequest(object):
         headers: dict or (default) `None`
             Dictionary of request headers
             e.g. {'Accept': 'text/html,application/xml',
-                'Content-Type': 'application/x-www-form-urlencoded'}
+            'Content-Type': 'application/x-www-form-urlencoded'}
         form_data: dict or (default) `None`
             Dictionary of POST request form data
             e.g. {'format': 'text/x-wdc',
-                'datasets': '/wdc/datasets/minute/aaa200509'}
+            'datasets': '/wdc/datasets/minute/aaa200509'}
+
         """
         self.url = url
         if headers is None:
@@ -160,8 +284,8 @@ class DataRequest(object):
         """
         Send a populated DataRequest
 
-        Side Effects
-        ------------
+        Notes
+        -----
         Makes an HTTP request over the network
 
         Raises
@@ -178,14 +302,16 @@ class DataRequest(object):
 
     def _error_with_message(self):
         """raise an error after building relevent error message"""
-        mess_base = 'Cannot send request: missing {}; set by calling `{}` method'
+        mess_base = ('Cannot send request: missing {}; '
+                     'set by calling `{}` method')
         mess = ''
         if not self.headers:
             mess += mess_base.format('headers', 'read_headers(config)')
         if not self.url:
             mess += mess_base.format('url', 'read_url(config)')
         if not self.form_data:
-            mess += mess_base.format('form data', 'set_form_data(form_data_dict)')
+            mess += mess_base.format('form data',
+                                     'set_form_data(form_data_dict)')
         raise InvalidRequest(mess)
 
     def read_url(self, request_config):
@@ -194,7 +320,7 @@ class DataRequest(object):
         the ParsedConfigFile `config`
 
         Parameters
-        ---------
+        ----------
         request_config: ParsedConfigFile
             thing that knows how to read `urls` from
             configuration files
@@ -207,7 +333,7 @@ class DataRequest(object):
         the ParsedConfigFile `config`
 
         Parameters
-        ---------
+        ----------
         request_config: ParsedConfigFile
             thing that knows how to read from
             configuration files
@@ -220,7 +346,7 @@ class DataRequest(object):
         the ParsedConfigFile `config`
 
         Parameters
-        ---------
+        ----------
         request_config: ParsedConfigFile
             thing that knows how to read from
             configuration files
@@ -238,7 +364,7 @@ class DataRequest(object):
         form_data_dict: dict
             something like
             {'datasets': '/route_url/aaa1978',
-             'format':text/x-wdc, }
+            'format':text/x-wdc}
         """
         self.form_data = form_data_dict
 
@@ -251,7 +377,7 @@ class FormData(object):
     def __init__(self, request_config):
         """
         Parameters
-        ---------
+        ----------
         request_config: ParsedConfigFile
             thing that knows how to read  the expected return data
             format from configuration files
@@ -262,7 +388,8 @@ class FormData(object):
 
     def __str__(self):
         """pretty (ish) printing)"""
-        strout = safe_format('{}:\n    {}', self.__class__.__name__, self._dict)
+        strout = safe_format('{}:\n    {}', self.__class__.__name__,
+                             self._dict)
         return strout
 
     def __repr__(self):
@@ -361,7 +488,7 @@ class ParsedConfigFile(object):
     Read the configuration file for making requests to
     the WDC  (and, in future INTERMAGNET) webservices.
 
-    Usage
+    Notes
     -----
     File is read on instantiation, but methods to
     extract parts needed are public `extract_url` etc.
@@ -375,7 +502,7 @@ class ParsedConfigFile(object):
         Currently only 'WDC'.
 
     Attributes
-    ---------
+    ----------
     dataformat: string
         format we want observatory data to come back in.
         Becomes part of the FormData.

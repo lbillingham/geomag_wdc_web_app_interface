@@ -1,17 +1,8 @@
+sudo: false
 language: python
-branches:
-    only:
-    - master
-    - exctract_class
 python:
-    - "3.5"
-    - "nightly"
+    - '3.5'
 install:
-    - "pip install ."
-    - "pip install pytest"
+    - make travis-install
 script:
-    - pytest
-after_success:
-    - "pip install -r requirements_dev.txt"
-    - "pip install -e . "
-    - "pytest --cov"
+    - make test

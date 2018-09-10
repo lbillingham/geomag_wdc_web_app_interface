@@ -1,112 +1,88 @@
-[![Build Status](https://travis-ci.org/lbillingham/geomag_wdc_web_app_interface.svg?branch=master)](https://travis-ci.org/lbillingham/geomag_wdc_web_app_interface)
+# gmdata_webinterface
+[![Build Status](https://travis-ci.org/willjbrown88/geomag_wdc_web_app_interface.svg?branch=master)](https://travis-ci.org/willjbrown88/geomag_wdc_web_app_interface)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-# geomag_wdc_web_app_interface
-programmatically get data from http://wdc.bgs.ac.uk/dataportal/
-installable like: `pip install .`
+This Python package allows a users to programmatically download data from the
+[British Geological Survey (BGS) Data Portal to the World Data Centre (WDC)
+for geomagnetism, Edinburgh](http://wdc.bgs.ac.uk/dataportal/).
 
-Main function for getting data is `consume_webservices.fetch_data`.
+Currently hour and minute cadence WDC files from geomagnetic observatories
+can be downloaded in this manner.
 
-## Example usage:
+This code was originally developed by Laurence Billingham, and is now maintained
+by William Brown.
+
+### MagPySV
+This package was designed in part to support observatory secular variation data processing work
+of Grace Cox in `MagPySV` (see [Grace's GitHub repo](https://github.com/gracecox/MagPySV/)),
+which will install this project as a dependecy to fetch WDC data on demand.
+
+## Installation
+The latest official release of the package can be installed from the Python Package
+Index PyPI with
+`pip install gmdata_webinterface`.
+
+The latest working version of the package can also be installed directly from git with:
+`pip install git+https://github.com/willjbrown88/geomag_wdc_web_app_interface.git`
+
+## Usage
+The main function for getting data is `consume_webservices.fetch_data()`.
+
+### Example usage:
 ```python
-from lib import consume_webservices as cws
+from datetime import date
+from gmdata_webinterface import consume_webservices as cws
 
 cadence = 'hour'
-station = 'NGK'
+stations = ['ESK', 'LER']
 start_date = date(2015, 4, 1)
 end_date = date(2015, 4, 30)
 service = 'WDC'
 download_dir = '/tmp/'
-configpath = os.path.join(<some_dir>, 'wdc_minute_data_wdcoutput.ini')
 cws.fetch_data(
-        start_date, end_date,
-        station, cadence,
-        service, download_dir, configpath
+        start_date=start_date, end_date=end_date,
+        station_list=stations, cadence=cadence,
+        service=service, saveroot=download_dir
 )
 ```
 See the docstring on `fetch_data` and the test in
-`tests/functional_tests.test_fetch_data_wdc_format_hour_data_from_wdc`
+`gmdata_webinterface/tests/functional_tests.test_fetch_data_wdc_format_hour_data_from_wdc`
 for detailed useage.
+This will download all available hourly data housed in the WDC for Geomagnetism,
+Edinburgh, for dates between `start_date` and `end_date`, from 'ESK'(dalemuir) and
+'LER'(wick) observatories, to the directory '/tmp/'.
 
+## Contributing
+This is a working project, with open source under an MIT license. You can report
+bugs, suggest changes, and contribute to this project via github at
+https://github.com/willjbrown88/geomag_wdc_web_app_interface.
 
+Expansion of the current package to access other ground observatory data services,
+such as INTERMAGNET and the AUX_OBS_ product of the ESA Swarm mission, are currently
+being developed. Any contributions or suggestion are welcome.
 
-very much a work in progress
+### Source code install
+You can obtain the source code from github with e.g.:
+`git clone https://github.com/willjbrown88/geomag_wdc_web_app_interface.git ./my_source_dir/`
+The code can then be built, documented and tested in various ways with the make `make` command,
+when in the source code directory.
+Type `make help` in the source directory to see the available options, e.g.
 
-# Notes from 2017-01-16 meeting with Grace Cox and Will Brown
-Main project is to get a data set of secual variation
-rapid core features liek jerks
-monthly differences of monthly means
+  * To install the package from source use:
+    `make install`
 
-R Holme and Will's thesis have a method for
-removing external fields.
+  * To install in editable, development mode use:
+    `make develop`
 
-Everyone has a different algorithm for calc monthly means and
-nobody really says what they do.
-There is not even, really, a set of monthly means that gets distributed.
-BCMT does give values but they are raw: with external field still apparent.
-Will Brown has a script to clean BCMT values based on the supplied record
-flags.
+  * To run the unit tests:
+    `make test`
 
-Grace's wants a single opensource, reproducible reference implimentation.
+  * To build the html documentation:
+    `make docs`
 
-Grace's code reads WDC format data
-that are hourly and with a daily mean.
-Would like to support WDC format as this is the most widely
-used format and is what most folk will have already.
+## Reference
+A manuscript describing [MagPySV](https://github.com/gracecox/MagPySV) and the
+intergated functionality of this package is currently in preparation.
 
-from a USB stick into a
-folder layout something like (*)
-
-```
-singleobservatory
-|
-|---------NGK
-|         |
-|         1999, 2000, 2001, ...
-|
-|---------ESK
-|         |
-|         1986, 1987, ...
-|
-...
-```
-see [Grace's GitHub repo](https://github.com/gracecox/MagPy/tree/master/magpy/data/BGS_hourly/hourval/single_obs)
-
-read into big `DdataFrame` hourly means per observatory from ~1960-present
-using `glob`. [Gillet et al., 2015 COV-OBS model](http://www.spacecenter.dk/files/magnetic-models/COV-OBSx1/COV-OBS.x1.pdf) used to subtract the core field.
-
-Denoising step uses `DataFrame` that looks like:
-
-```
-index = pd.TimeSeriesIndex()
-columns = NGK_X, NGK_Y, NGK_Z, ..., ESK_X, ESK_Y, ESK_Z, ...
-```
-
-and Ap index from [GFZ](http://www.gfz-potsdam.de/en/kp-index/)
-
-Finding steps. There is a list of baseline step corrections. We _think_ they have been applied before the data get to the stage that Grace's data is at. Not totally sure what has been done, maybe steps removed and then noted at the end of year.
-There is currently an R-interface to find and remove step corrections but it would be better not to need to do this.
-
-## what wanted
-1. Per-observatory monthly means of `X, Y, Z` components. Discard all `I, F` only keep `H` to get `
-2. Monthly 1st differences.
-3. Initially, monthly means in folder structure like * above
-4. List of observatories in _geocentric_ lat, lon, radius (prefereably in radians).
-
-## Actions
-- **Will** will find out how and when the baseline correction is done
-- **Will** What spheroid are the lat lon etc. on INTERMAGNET and WDC websites with repect to. Prob geographic (WGS 84) and height MSL?
-- **Will** Fork (or otherwise) [Grace's GitHub repo](https://github.com/gracecox/MagPy), make a `virtualenv` and run notebook. Wiht help from Grace and Laurence.
-- **Will** answer some of the questions raised in the manuscript
-- **Laurence** can we get location from WDC REST API (poss via [postman](http://www.getpostman.com/))?
-- **Laurence** monthly mean data from WDC via REST API into folder structure in * above. Not _yet_ implimenting heirachy of defin, qdefin,
-- **Grace** nudge Richard re letter of support for EPCC refactor
-- **Grace** continue drafting paper
-
-### time frame for actions
-
-Laurence will have tiem to work on this
- between 2017-01-27/02-01
-
-
-
-
+While the project is open source, we ask that you abide by the included MIT license,
+and acknowledge the authors where due.
